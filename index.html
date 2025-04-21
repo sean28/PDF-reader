@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Reader Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    textarea {
+      min-width: 98.5%;
+      min-height: 300px;
+      padding: 15px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      font-size: 16px;
+      resize: both;
+      white-space: pre-wrap;
+    }
+    #pdfFile {
+      margin-bottom: 10px;
+    }
+    #searchBox {
+      margin: 10px 0 5px 0;
+      width: 100%;
+      padding: 8px;
+      font-size: 16px;
+      border: 2px solid #4CAF50;
+      border-radius: 5px;
+      resize: horizontal;
+    }
+    #navButtons {
+      margin: 10px 0;
+    }
+    #navButtons button {
+      padding: 6px 12px;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    #matchCount {
+      margin: 5px 0 15px 0;
+      font-size: 14px;
+      color: #555;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📄 PDF Reader Tool</h1>
+  <input type="file" id="pdfFile" accept="application/pdf">
+  <input type="text" id="searchBox" placeholder="🔍 输入关键词进行搜索...">
+  <div id="navButtons">
+    <button onclick="navigateTo(0)">⏮️ 最前</button>
+    <button onclick="navigateHit(-1)">⬆️ 上一个</button>
+    <button onclick="navigateHit(1)">⬇️ 下一个</button>
+    <button onclick="navigateTo(matchIndices.length - 1)">⏭️ 最后</button>
+  </div>
+  <div id="matchCount"></div>
+  <textarea id="pdfText" placeholder="PDF 内容将显示在这里..."></textarea>
+
+  <script>
+    const input = document.getElementById('pdfFile');
+    const output = document.getElementById('pdfText');
+    const searchBox = document.getElementById('searchBox');
+    const matchCountDisplay = document.getElementById('matchCount');
+
+    let originalText = '';
+    let currentKeyword = '';
+    let matchIndices = [];
+    let currentIndex = -1;
+    let autoJumpTimeout = null;
+
+    input.addEventListener('change', function () {
+      const file = input.files[0];
+      if (!file || file.type !== 'application/pdf') return alert('请选择一个 PDF 文件');
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        const typedarray = new Uint8Array(reader.result);
+        pdfjsLib.getDocument(typedarray).promise.then(async function (pdf) {
+          let textContent = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = content.items.map(item => item.str).join('');
+            textContent += strings + '\n\n';
+          }
+          originalText = textContent.trim();
+          output.value = originalText;
+          resetSearch();
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    searchBox.addEventListener('input', function () {
+      currentKeyword = this.value.trim();
+      if (!currentKeyword) {
+        output.value = originalText;
+        resetSearch();
+        return;
+      }
+
+      matchIndices = [];
+      let pos = 0;
+      const lowerText = originalText.toLowerCase();
+      const lowerKeyword = currentKeyword.toLowerCase();
+      while ((pos = lowerText.indexOf(lowerKeyword, pos)) !== -1) {
+        matchIndices.push(pos);
+        pos += lowerKeyword.length;
+      }
+      currentIndex = -1;
+      matchCountDisplay.textContent = `共找到 ${matchIndices.length} 条匹配`;
+
+      // 延迟跳转，避免频繁打断输入
+      if (autoJumpTimeout) clearTimeout(autoJumpTimeout);
+      autoJumpTimeout = setTimeout(() => {
+        navigateHit(1);
+      }, 2500); // 500ms 延迟跳转
+    });
+
+    function navigateHit(direction) {
+      if (matchIndices.length === 0) return;
+      currentIndex += direction;
+      if (currentIndex >= matchIndices.length) currentIndex = 0;
+      if (currentIndex < 0) currentIndex = matchIndices.length - 1;
+      navigateTo(currentIndex);
+    }
+
+    function navigateTo(index) {
+      if (matchIndices.length === 0) return;
+      currentIndex = index;
+      const start = matchIndices[currentIndex];
+      const end = start + currentKeyword.length;
+      output.focus();
+      output.setSelectionRange(start, end);
+      output.scrollTop = output.scrollHeight * (start / originalText.length);
+    }
+
+    function resetSearch() {
+      matchIndices = [];
+      currentIndex = -1;
+      matchCountDisplay.textContent = '';
+    }
+  </script>
+</body>
+</html>
