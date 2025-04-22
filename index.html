@@ -3,65 +3,118 @@
 <head>
   <meta charset="UTF-8">
   <title>PDF Reader Tool</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      max-width: 800px;
+      font-family: 'Poppins', sans-serif;
+      background-color: #f9f9f9;
+      max-width: 880px;
       margin: 40px auto;
-      padding: 20px;
-      line-height: 1.6;
+      padding: 30px;
+      color: #333;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.05);
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #4CAF50;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    input[type="file"], input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      margin-bottom: 12px;
+      border: 2px solid #4CAF50;
+      border-radius: 10px;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
     }
     textarea {
-      min-width: 98.5%;
+      min-width: 97.25%;
       min-height: 300px;
       padding: 15px;
       border: 2px solid #ccc;
-      border-radius: 8px;
-      font-size: 16px;
-      resize: both;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: 'Poppins', sans-serif;
       white-space: pre-wrap;
+      background: #fff;
+      resize: both;
+      box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
     }
-    #pdfFile {
-      margin-bottom: 10px;
+    button {
+      padding: 10px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      color: white;
+      background-color: #4CAF50;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
-    #searchBox {
-      margin: 10px 0 5px 0;
-      width: 100%;
-      padding: 8px;
-      font-size: 16px;
-      border: 2px solid #4CAF50;
-      border-radius: 5px;
-      resize: horizontal;
+    button:hover {
+      background-color: #45a049;
+    }
+    #clearButton {
+      background-color: #e53935;
+      margin-left: 10px;
+    }
+    #clearButton:hover {
+      background-color: #c62828;
     }
     #navButtons {
-      margin: 10px 0;
+      margin: 15px 0;
     }
     #navButtons button {
-      padding: 6px 12px;
-      font-size: 14px;
       margin-right: 10px;
     }
-    #matchCount {
-      margin: 5px 0 15px 0;
-      font-size: 14px;
+    #matchCount, #fileNameDisplay {
+      margin: 10px 0;
       color: #555;
+      font-size: 14px;
     }
-    h1 {
-      font-size: 24px;
-      margin-bottom: 20px;
+    #progressContainer {
+      height: 6px;
+      background: #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      display: none;
+    }
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4CAF50, #81C784);
+      transition: width 0.3s ease;
+    }
+    #toggleJump {
+      font-size: 14px;
+      margin: 8px 0 12px 0;
+      display: inline-block;
     }
   </style>
 </head>
 <body>
-  <h1>📄 PDF Reader Tool</h1>
+  <h1>PDF Reader Tool</h1>
   <input type="file" id="pdfFile" accept="application/pdf">
-  <input type="text" id="searchBox" placeholder="🔍 输入关键词进行搜索...">
+  <div id="fileNameDisplay"></div>
+  <div id="progressContainer"><div id="progressBar"></div></div>
+  <input type="text" id="searchBox" placeholder="搜索...">
+  <label id="toggleJump"><input type="checkbox" id="autoJumpToggle" checked> 自动跳转匹配</label>
+  <button id="clearButton">清除文件</button>
   <div id="navButtons">
-    <button onclick="navigateTo(0)">⏮️ 最前</button>
-    <button onclick="navigateHit(-1)">⬆️ 上一个</button>
-    <button onclick="navigateHit(1)">⬇️ 下一个</button>
-    <button onclick="navigateTo(matchIndices.length - 1)">⏭️ 最后</button>
+    <button onclick="navigateTo(0)">最前</button>
+    <button onclick="navigateHit(-1)">上一个</button>
+    <button onclick="navigateHit(1)">下一个</button>
+    <button onclick="navigateTo(matchIndices.length - 1)">最后</button>
+    <button onclick="copyText()">拷贝</button>
+    <label style="margin-left:10px;font-size:14px;"><input type="checkbox" id="noCopyLimit"> 不限制拷贝</label>
   </div>
   <div id="matchCount"></div>
   <textarea id="pdfText" placeholder="PDF 内容将显示在这里..."></textarea>
@@ -71,6 +124,12 @@
     const output = document.getElementById('pdfText');
     const searchBox = document.getElementById('searchBox');
     const matchCountDisplay = document.getElementById('matchCount');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const progressBar = document.getElementById('progressBar');
+    const progressContainer = document.getElementById('progressContainer');
+    const autoJumpToggle = document.getElementById('autoJumpToggle');
+    const clearButton = document.getElementById('clearButton');
+    const noCopyLimit = document.getElementById('noCopyLimit');
 
     let originalText = '';
     let currentKeyword = '';
@@ -80,11 +139,32 @@
 
     input.addEventListener('change', function () {
       const file = input.files[0];
-      if (!file || file.type !== 'application/pdf') return alert('请选择一个 PDF 文件');
-
+      if (!file) return;
+      const maxSizeMB = 20;
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        alert(`文件过大，不能超过 ${maxSizeMB} MB！`);
+        input.value = '';
+        return;
+      }
+      if (file.type !== 'application/pdf') {
+        alert('请选择 PDF 文件');
+        input.value = '';
+        return;
+      }
+      fileNameDisplay.textContent = `当前文件：${file.name}`;
+      progressContainer.style.display = 'block';
+      progressBar.style.width = '0%';
       const reader = new FileReader();
+      reader.onloadstart = () => progressBar.style.width = '10%';
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.min(90, (e.loaded / e.total) * 80 + 10);
+          progressBar.style.width = `${percent}%`;
+        }
+      };
       reader.onload = function () {
         const typedarray = new Uint8Array(reader.result);
+        progressBar.style.width = '95%';
         pdfjsLib.getDocument(typedarray).promise.then(async function (pdf) {
           let textContent = '';
           for (let i = 1; i <= pdf.numPages; i++) {
@@ -92,10 +172,14 @@
             const content = await page.getTextContent();
             const strings = content.items.map(item => item.str).join('');
             textContent += strings + '\n\n';
+            progressBar.style.width = `${95 + (i / pdf.numPages) * 5}%`;
           }
           originalText = textContent.trim();
           output.value = originalText;
+          matchCountDisplay.textContent = `已提取 ${pdf.numPages} 页`;
           resetSearch();
+          progressBar.style.width = '100%';
+          setTimeout(() => progressContainer.style.display = 'none', 500);
         });
       };
       reader.readAsArrayBuffer(file);
@@ -108,7 +192,6 @@
         resetSearch();
         return;
       }
-
       matchIndices = [];
       let pos = 0;
       const lowerText = originalText.toLowerCase();
@@ -119,12 +202,12 @@
       }
       currentIndex = -1;
       matchCountDisplay.textContent = `共找到 ${matchIndices.length} 条匹配`;
-
-      // 延迟跳转，避免频繁打断输入
       if (autoJumpTimeout) clearTimeout(autoJumpTimeout);
-      autoJumpTimeout = setTimeout(() => {
-        navigateHit(1);
-      }, 2500); // 500ms 延迟跳转
+      if (autoJumpToggle.checked) {
+        autoJumpTimeout = setTimeout(() => {
+          navigateHit(1);
+        }, 2000);
+      }
     });
 
     function navigateHit(direction) {
@@ -148,8 +231,34 @@
     function resetSearch() {
       matchIndices = [];
       currentIndex = -1;
+    }
+
+    clearButton.addEventListener('click', function () {
+      input.value = '';
+      output.value = '';
+      searchBox.value = '';
+      fileNameDisplay.textContent = '';
       matchCountDisplay.textContent = '';
+      progressContainer.style.display = 'none';
+      progressBar.style.width = '0%';
+      originalText = '';
+      resetSearch();
+    });
+
+    function copyText() {
+      const content = output.value;
+      const limit = 1 * 1024 * 1024; // 3MB
+      if (!noCopyLimit.checked && new Blob([content]).size > limit) {
+        alert('拷贝失败：内容过大（限 1MB）');
+        return;
+      }
+      navigator.clipboard.writeText(content).then(() => {
+        alert('拷贝成功！');
+      }, () => {
+        alert('拷贝失败');
+      });
     }
   </script>
 </body>
 </html>
+
